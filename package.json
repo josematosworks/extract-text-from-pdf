@@ -1,9 +1,16 @@
 {
   "name": "extract-text-from-pdf",
   "private": true,
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "scripts": {
     "dev": "wrangler dev src/main.ts",
-    "deploy": "wrangler deploy --minify src/main.ts"
+    "deploy": "wrangler deploy --minify src/main.ts",
+    "lint": "eslint . --ext .ts",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "hono": "^4.2.3",

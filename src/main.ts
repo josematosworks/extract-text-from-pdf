@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { cors } from 'hono/cors';
 import { getDocumentProxy, extractText } from "unpdf";
+import { corsMiddleware } from "./cors";
+import { isPDF, isValidFileSize, sanitizeText } from "./validation";
 
 type Bindings = {
   ALLOWED_ORIGINS: string;
@@ -8,21 +9,18 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use('*', async (c, next) => {
-  const allowedOrigins = c.env.ALLOWED_ORIGINS
-    ? String(c.env.ALLOWED_ORIGINS).split(',').map(o => o.trim())
-    : [];
-    
-  return cors({
-    origin: (origin) => allowedOrigins.includes(origin) ? origin : null,
-    allowMethods: ['POST'],
-    maxAge: 86400,
-  })(c, next);
-});
+app.use("*", corsMiddleware);
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface ExtractResponse {
-  extractedText: string;
-  totalChars: number;
+  text: string;
+  characterCount: number;
+}
+
+interface ErrorResponse {
+  error: string;
+  code?: string;
 }
 
 app.post("/upload", async (c) => {
@@ -31,30 +29,49 @@ app.post("/upload", async (c) => {
     const file = formData.get("file");
 
     if (!file || !(file instanceof File)) {
-      return c.json({ error: "Please provide a valid PDF file" }, 400);
+      return c.json({ 
+        error: "Please provide a valid PDF file",
+        code: "INVALID_FILE"
+      }, 400);
     }
 
-    if (!file.type.includes("pdf")) {
-      return c.json({ error: "Only PDF files are supported" }, 400);
+    if (!isPDF(file)) {
+      return c.json({ 
+        error: "Only PDF files are supported",
+        code: "INVALID_FILE_TYPE"
+      }, 400);
+    }
+
+    if (!isValidFileSize(file, MAX_FILE_SIZE)) {
+      return c.json({ 
+        error: "File size exceeds 10MB limit",
+        code: "FILE_TOO_LARGE"
+      }, 413);
     }
 
     const buffer = await file.arrayBuffer();
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const result = await extractText(pdf, { mergePages: true });
+    const result = await extractText(pdf, { 
+      mergePages: true,
+    });
 
     const textContent = Array.isArray(result.text)
       ? result.text.join(" ")
       : result.text;
 
+    const sanitizedText = sanitizeText(textContent);
     const response: ExtractResponse = {
-      extractedText: textContent,
-      totalChars: textContent.length,
+      text: sanitizedText,
+      characterCount: sanitizedText.length,
     };
 
     return c.json(response);
   } catch (error) {
     console.error("PDF processing error:", error);
-    return c.json({ error: "Failed to process PDF" }, 500);
+    return c.json({ 
+      error: "Failed to process PDF",
+      code: "PROCESSING_ERROR"
+    }, 500);
   }
 });
 
