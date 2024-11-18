@@ -1,9 +1,25 @@
 import { Hono } from "hono";
+import { cors } from 'hono/cors';
 import { getDocumentProxy, extractText } from "unpdf";
 
-const app = new Hono();
+type Bindings = {
+  ALLOWED_ORIGINS: string;
+};
 
-// Define response type for better type safety
+const app = new Hono<{ Bindings: Bindings }>();
+
+app.use('*', async (c, next) => {
+  const allowedOrigins = c.env.ALLOWED_ORIGINS
+    ? String(c.env.ALLOWED_ORIGINS).split(',').map(o => o.trim())
+    : [];
+    
+  return cors({
+    origin: (origin) => allowedOrigins.includes(origin) ? origin : null,
+    allowMethods: ['POST'],
+    maxAge: 86400,
+  })(c, next);
+});
+
 interface ExtractResponse {
   extractedText: string;
   totalChars: number;
@@ -14,12 +30,10 @@ app.post("/upload", async (c) => {
     const formData = await c.req.formData();
     const file = formData.get("file");
 
-    // Improved type checking and error message
     if (!file || !(file instanceof File)) {
       return c.json({ error: "Please provide a valid PDF file" }, 400);
     }
 
-    // Add file type validation
     if (!file.type.includes("pdf")) {
       return c.json({ error: "Only PDF files are supported" }, 400);
     }
