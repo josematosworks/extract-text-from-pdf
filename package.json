@@ -13,6 +13,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "franc": "^6.2.0",
     "hono": "^4.2.3",
     "pdfjs-dist": "^4.1.392",
     "unpdf": "^0.10.1"

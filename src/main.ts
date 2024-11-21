@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { getDocumentProxy, extractText } from "unpdf";
 import { corsMiddleware } from "./cors";
 import { isPDF, isValidFileSize, sanitizeText } from "./validation";
+import { franc } from "franc";
+import ISO_693_3_TO_1 from "./iso-693-3-to-1";
 
 type Bindings = {
   ALLOWED_ORIGINS: string;
@@ -16,6 +18,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 interface ExtractResponse {
   text: string;
   characterCount: number;
+  language: string;
 }
 
 interface ErrorResponse {
@@ -29,29 +32,38 @@ app.post("/upload", async (c) => {
     const file = formData.get("file");
 
     if (!file || !(file instanceof File)) {
-      return c.json({ 
-        error: "Please provide a valid PDF file",
-        code: "INVALID_FILE"
-      }, 400);
+      return c.json(
+        {
+          error: "Please provide a valid PDF file",
+          code: "INVALID_FILE",
+        },
+        400
+      );
     }
 
     if (!isPDF(file)) {
-      return c.json({ 
-        error: "Only PDF files are supported",
-        code: "INVALID_FILE_TYPE"
-      }, 400);
+      return c.json(
+        {
+          error: "Only PDF files are supported",
+          code: "INVALID_FILE_TYPE",
+        },
+        400
+      );
     }
 
     if (!isValidFileSize(file, MAX_FILE_SIZE)) {
-      return c.json({ 
-        error: "File size exceeds 10MB limit",
-        code: "FILE_TOO_LARGE"
-      }, 413);
+      return c.json(
+        {
+          error: "File size exceeds 10MB limit",
+          code: "FILE_TOO_LARGE",
+        },
+        413
+      );
     }
 
     const buffer = await file.arrayBuffer();
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const result = await extractText(pdf, { 
+    const result = await extractText(pdf, {
       mergePages: true,
     });
 
@@ -60,18 +72,25 @@ app.post("/upload", async (c) => {
       : result.text;
 
     const sanitizedText = sanitizeText(textContent);
+    const iso693_3 = franc(sanitizedText);
+    const iso693_1 = ISO_693_3_TO_1[iso693_3];
+
     const response: ExtractResponse = {
       text: sanitizedText,
       characterCount: sanitizedText.length,
+      language: iso693_1,
     };
 
     return c.json(response);
   } catch (error) {
     console.error("PDF processing error:", error);
-    return c.json({ 
-      error: "Failed to process PDF",
-      code: "PROCESSING_ERROR"
-    }, 500);
+    return c.json(
+      {
+        error: "Failed to process PDF",
+        code: "PROCESSING_ERROR",
+      },
+      500
+    );
   }
 });
 
